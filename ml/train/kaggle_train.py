@@ -8,39 +8,38 @@
   4. Добавить датасет через Add Data → Your Datasets
   5. Вставить содержимое этого файла в notebook
   6. Run All
-
-Датасет будет доступен по пути /kaggle/input/<slug>/mvtec_yolo/
-где <slug> — это имя датасета которое ты задал при загрузке.
 """
 
-import os
 import yaml
 from pathlib import Path
 from ultralytics import YOLO
-
-# ─── НАСТРОЙКИ ────────────────────────────────────────────────────────────────
-# Измени этот slug на имя своего Kaggle датасета
-DATASET_SLUG = "mvtec-yolo-defects"
 
 # Kaggle всегда монтирует датасеты сюда
 KAGGLE_INPUT = Path("/kaggle/input")
 WORK_DIR = Path("/kaggle/working")
 
-# ─── НАХОДИМ ДАТАСЕТ ──────────────────────────────────────────────────────────
-# Ищем папку mvtec_yolo внутри примонтированного датасета
-dataset_root = KAGGLE_INPUT / DATASET_SLUG / "mvtec_yolo"
+# ─── АВТО-ПОИСК ДАТАСЕТА ──────────────────────────────────────────────────────
+# Kaggle распаковывает zip по-разному в зависимости от структуры архива.
+# Ищем dataset.yaml — его наличие означает что мы нашли корень датасета.
+def find_dataset_root(base: Path) -> Path:
+    """Рекурсивно ищет папку с dataset.yaml внутри /kaggle/input."""
+    # Проверяем до 3 уровней вглубь — глубже Kaggle обычно не кладёт
+    for yaml_file in base.rglob("dataset.yaml"):
+        return yaml_file.parent
+    return None
 
-# Если путь неверный — показываем что доступно, чтобы было легче найти
-if not dataset_root.exists():
-    print("Доступные датасеты:")
-    for p in KAGGLE_INPUT.iterdir():
-        print(f"  {p}")
-        for sub in p.iterdir():
-            print(f"    {sub}")
-    raise FileNotFoundError(
-        f"Датасет не найден: {dataset_root}\n"
-        f"Измени DATASET_SLUG на правильное имя выше."
-    )
+dataset_root = find_dataset_root(KAGGLE_INPUT)
+
+# Если не нашли — печатаем дерево для диагностики
+if dataset_root is None:
+    print("dataset.yaml не найден. Структура /kaggle/input:")
+    for p in KAGGLE_INPUT.rglob("*"):
+        # Печатаем только первые 3 уровня чтобы не утонуть в списке
+        depth = len(p.relative_to(KAGGLE_INPUT).parts)
+        if depth <= 3:
+            indent = "  " * (depth - 1)
+            print(f"{indent}{p.name}{'/' if p.is_dir() else ''}")
+    raise FileNotFoundError("dataset.yaml не найден в /kaggle/input")
 
 print(f"✓ Датасет найден: {dataset_root}")
 
@@ -52,29 +51,30 @@ print(f"  Val:   {len(val_images)} изображений")
 
 # ─── ПАТЧИМ dataset.yaml ──────────────────────────────────────────────────────
 # Оригинальный yaml содержит Windows путь D:\...
-# Заменяем на актуальный Kaggle путь
+# Заменяем на актуальный Kaggle путь (/kaggle/input/...)
 yaml_src = dataset_root / "dataset.yaml"
 yaml_dst = WORK_DIR / "dataset.yaml"
 
 with open(yaml_src) as f:
     config = yaml.safe_load(f)
 
-# path: корневая папка датасета — от неё строятся train: и val:
+# path: корневая папка датасета — от неё строятся train: images/train и val: images/val
 config["path"] = str(dataset_root)
 
 with open(yaml_dst, "w") as f:
     yaml.dump(config, f, allow_unicode=True)
 
-print(f"\n✓ dataset.yaml создан: {yaml_dst}")
+print(f"\n✓ dataset.yaml пропатчен: {yaml_dst}")
 print(f"  path: {config['path']}")
 print(f"  nc:   {config['nc']}")
 print(f"  names: {config['names']}")
 
 # ─── ПРОВЕРКА GPU ─────────────────────────────────────────────────────────────
 import torch
-print(f"\n GPU: {torch.cuda.is_available()}")
-if torch.cuda.is_available():
-    print(f"  {torch.cuda.get_device_name(0)}")
+gpu_ok = torch.cuda.is_available()
+print(f"\nGPU доступен: {gpu_ok}")
+if gpu_ok:
+    print(f"  Устройство: {torch.cuda.get_device_name(0)}")
     print(f"  VRAM: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
 
 # ─── ОБУЧЕНИЕ ─────────────────────────────────────────────────────────────────
