@@ -1,0 +1,16 @@
+# Конфигурация Prometheus — что и как часто опрашивать.
+#
+# Prometheus работает по принципу pull: сам ходит к сервисам и забирает метрики.
+# Это противоположность push-модели где сервис сам отправляет метрики.
+
+global:
+  scrape_interval: 15s      # опрашивать каждые 15 секунд
+  evaluation_interval: 15s  # как часто вычислять alert-правила
+
+scrape_configs:
+  - job_name: "visual-inspection-api"
+    static_configs:
+      # host.docker.internal — специальное DNS имя в Docker Desktop на Windows/Mac
+      # позволяет контейнеру обращаться к хосту (localhost с точки зрения контейнера)
+      - targets: ["host.docker.internal:8000"]
+    metrics_path: "/metrics"

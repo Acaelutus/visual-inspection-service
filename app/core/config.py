@@ -10,3 +10,6 @@ import os
 
 # Redis URL — для локальной разработки localhost, в Docker — имя сервиса redis
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+
+# MLflow Tracking Server URL
+MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")

@@ -8,9 +8,11 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from app.api.routes import router
 from app.api.tasks_routes import router as tasks_router
+from app.core.mlflow_tracker import register_deployed_model
 from app.core.model import load_model
 
 
@@ -18,12 +20,12 @@ from app.core.model import load_model
 async def lifespan(app: FastAPI):
     """
     Lifespan — код до yield выполняется при старте, после yield — при остановке.
-    Загружаем модель один раз при старте, а не при каждом запросе.
     """
     print("Загрузка модели...")
     load_model()
+    # Регистрируем текущую модель в MLflow как задеплоенную версию
+    register_deployed_model()
     yield
-    # Место для cleanup при остановке (освобождение GPU памяти и т.д.)
     print("Сервис остановлен")
 
 
@@ -36,3 +38,7 @@ app = FastAPI(
 
 app.include_router(router)
 app.include_router(tasks_router)
+
+# Instrumentator автоматически добавляет /metrics endpoint
+# и начинает собирать стандартные HTTP метрики: request count, latency, size
+Instrumentator().instrument(app).expose(app)

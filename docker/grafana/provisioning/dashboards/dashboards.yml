@@ -1,0 +1,11 @@
+# Указывает Grafana где искать JSON-файлы дашбордов для автозагрузки.
+
+apiVersion: 1
+
+providers:
+  - name: "Visual Inspection Dashboards"
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10    # проверять обновления каждые 10 секунд
+    options:
+      path: /var/lib/grafana/dashboards  # путь внутри контейнера (маппим через volume)

@@ -14,6 +14,7 @@ from celery.result import AsyncResult
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 
 from app.core.celery_app import celery_app
+from app.core.metrics import DEFECTS_DETECTED_TOTAL, INFERENCE_DURATION_MS, PREDICTIONS_TOTAL
 from app.models.schemas import TaskResponse, TaskStatus
 from app.workers.tasks import detect_defects
 
@@ -64,6 +65,15 @@ def get_task_result(task_id: str):
 
     if result.state == "SUCCESS":
         data = result.result  # dict — то что вернула detect_defects()
+
+        # Метрики пишем когда клиент первый раз забирает успешный результат.
+        # result.forget() помечает результат как прочитанный — повторный GET
+        # вернёт PENDING, и метрики не задвоятся.
+        PREDICTIONS_TOTAL.labels(endpoint="async").inc()
+        INFERENCE_DURATION_MS.observe(data["inference_ms"])
+        DEFECTS_DETECTED_TOTAL.inc(data["count"])
+        result.forget()
+
         return TaskResponse(
             task_id=task_id,
             status=TaskStatus.success,

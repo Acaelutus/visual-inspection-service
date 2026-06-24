@@ -6,6 +6,7 @@ import cv2
 import numpy as np
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 
+from app.core.metrics import DEFECTS_DETECTED_TOTAL, INFERENCE_DURATION_MS, PREDICTIONS_TOTAL
 from app.core.model import DefectDetector, get_detector, is_model_loaded
 from app.models.schemas import HealthResponse, PredictResponse
 
@@ -51,6 +52,11 @@ async def predict(
         raise HTTPException(status_code=422, detail="Не удалось декодировать изображение")
 
     defects, inference_ms = detector.predict(image, confidence=confidence)
+
+    # Обновляем Prometheus метрики после каждого успешного предсказания
+    PREDICTIONS_TOTAL.labels(endpoint="sync").inc()
+    INFERENCE_DURATION_MS.observe(inference_ms)
+    DEFECTS_DETECTED_TOTAL.inc(len(defects))
 
     return PredictResponse(
         defects=defects,

@@ -7,3 +7,6 @@ opencv-python==4.13.0.92
 numpy==2.0.2
 celery==5.3.6
 redis==5.0.1
+prometheus-fastapi-instrumentator==7.1.0
+prometheus-client==0.19.0
+mlflow==2.11.1

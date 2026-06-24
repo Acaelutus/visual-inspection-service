@@ -1,0 +1,12 @@
+# Автоматическая настройка источника данных Grafana.
+# Grafana подхватывает этот файл при старте — не нужно настраивать вручную через UI.
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus          # uid используется в dashboard JSON для привязки
+    url: http://prometheus:9090  # prometheus — имя сервиса в docker-compose
+    isDefault: true
+    access: proxy            # Grafana сама ходит к Prometheus (не браузер клиента)
