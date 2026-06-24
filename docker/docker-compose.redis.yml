@@ -1,0 +1,18 @@
+# Docker Compose для локальной разработки — только Redis.
+#
+# Запуск: docker compose -f docker/docker-compose.redis.yml up -d
+# Остановка: docker compose -f docker/docker-compose.redis.yml down
+#
+# -d (detached) — запускает в фоне, терминал остаётся свободным.
+
+services:
+  redis:
+    image: redis:7-alpine   # alpine — минимальный образ, ~30MB вместо ~100MB
+    ports:
+      - "6379:6379"         # хост:контейнер — подключаемся к localhost:6379
+    volumes:
+      - redis_data:/data    # сохраняем данные между перезапусками контейнера
+    command: redis-server --save 60 1  # persistence: сохранять на диск каждые 60 секунд
+
+volumes:
+  redis_data:  # именованный volume — Docker сам управляет хранилищем

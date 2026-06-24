@@ -5,3 +5,5 @@ pydantic==2.13.4
 ultralytics==8.4.75
 opencv-python==4.13.0.92
 numpy==2.0.2
+celery==5.3.6
+redis==5.0.1

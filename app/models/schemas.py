@@ -3,6 +3,9 @@ Pydantic схемы — контракт API.
 Определяют что принимает и что возвращает каждый endpoint.
 """
 
+from enum import Enum
+from typing import Optional
+
 from pydantic import BaseModel, Field
 
 
@@ -32,3 +35,27 @@ class HealthResponse(BaseModel):
     """Ответ health check — мониторинг использует этот endpoint."""
     status: str
     model_loaded: bool
+
+
+class TaskStatus(str, Enum):
+    """
+    Статус задачи Celery.
+    str + Enum — FastAPI сериализует как строку ("pending"), не число.
+    """
+    pending = "pending"
+    success = "success"
+    failure = "failure"
+
+
+class TaskResponse(BaseModel):
+    """
+    Ответ на запросы /tasks/predict и /tasks/{task_id}.
+    Поля defects/count/inference_ms заполнены только при status=success.
+    Поле error заполнено только при status=failure.
+    """
+    task_id: str
+    status: TaskStatus
+    defects: Optional[list[Defect]] = None
+    count: Optional[int] = None
+    inference_ms: Optional[float] = None
+    error: Optional[str] = None

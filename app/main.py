@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.api.routes import router
+from app.api.tasks_routes import router as tasks_router
 from app.core.model import load_model
 
 
@@ -34,3 +35,4 @@ app = FastAPI(
 )
 
 app.include_router(router)
+app.include_router(tasks_router)
