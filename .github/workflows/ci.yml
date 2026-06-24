@@ -1,0 +1,75 @@
+# CI — Continuous Integration.
+# Запускается при каждом push и pull request в master.
+# Проверяет: линтер → тесты → сборка Docker образа.
+#
+# Если хотя бы один шаг упал — merge заблокирован (настраивается в Branch Protection Rules).
+
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.9
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+          cache: pip   # кэшируем pip packages между запусками — быстрее
+
+      - name: Install ruff
+        run: pip install ruff==0.3.0
+
+      # ruff — быстрый линтер на Rust, заменяет flake8 + isort + pycodestyle
+      - name: Run ruff
+        run: ruff check app/
+
+  test:
+    name: Tests (pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.9
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+          cache: pip
+
+      - name: Install dependencies
+        # Ставим prod зависимости + dev зависимости (pytest)
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run tests
+        run: pytest tests/ -v --tb=short
+
+  build-docker:
+    name: Build Docker image
+    runs-on: ubuntu-latest
+    # Запускаем сборку только если lint и тесты прошли
+    needs: [lint, test]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        # Если Dockerfile или зависимости сломаны — узнаём здесь, а не на prod
+        run: docker build -t visual-inspection-service:ci .
+
+      - name: Verify image starts
+        run: |
+          # Проверяем что контейнер вообще запускается (не крашится сразу)
+          docker run --rm --entrypoint python \
+            visual-inspection-service:ci \
+            -c "from app.core.config import REDIS_URL; print('Import OK')"

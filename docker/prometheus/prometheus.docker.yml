@@ -1,0 +1,16 @@
+# Prometheus конфиг для полного Docker стека (docker-compose.yml).
+#
+# Отличие от prometheus.yml:
+# - там target = host.docker.internal:8000 (FastAPI на хосте)
+# - здесь target = api:8000 (FastAPI — отдельный сервис в compose сети)
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: "visual-inspection-api"
+    static_configs:
+      # api — имя сервиса в docker-compose.yml, Docker DNS резолвит его в IP контейнера
+      - targets: ["api:8000"]
+    metrics_path: "/metrics"

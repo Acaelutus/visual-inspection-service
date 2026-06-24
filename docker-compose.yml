@@ -1,0 +1,107 @@
+# Полный стек для локальной разработки одной командой:
+#   docker compose up --build
+#
+# Запускает: FastAPI + Celery Worker + Redis + Prometheus + Grafana + MLflow
+
+services:
+
+  # ---- Приложение ----
+
+  api:
+    build:
+      context: .          # путь к Dockerfile (текущая директория)
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      # В Docker сети сервисы доступны по имени (redis, mlflow), не localhost
+      - REDIS_URL=redis://redis:6379/0
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+    volumes:
+      # Монтируем модель из локальной папки — не нужно пересобирать образ при смене модели
+      - ./ml/models:/app/ml/models:ro
+    depends_on:
+      redis:
+        condition: service_healthy   # ждём пока Redis пройдёт healthcheck
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # Переопределяем CMD из Dockerfile — запускаем Celery вместо FastAPI
+    # На Linux можно убрать --pool=solo (используем prefork по умолчанию)
+    command: celery -A app.core.celery_app:celery_app worker --loglevel=info --concurrency=2
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - ./ml/models:/app/ml/models:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ---- Инфраструктура ----
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --save 60 1
+    # healthcheck позволяет depends_on ждать готовности Redis (не просто факта запуска)
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ---- Мониторинг ----
+
+  prometheus:
+    image: prom/prometheus:v2.50.1
+    ports:
+      - "9090:9090"
+    volumes:
+      # Используем docker-специфичный конфиг (target = api:8000, не host.docker.internal)
+      - ./docker/prometheus/prometheus.docker.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=7d"
+    depends_on:
+      - api
+
+  grafana:
+    image: grafana/grafana:10.3.1
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./docker/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.11.1
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflow_data:/mlflow
+    command: >
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --backend-store-uri /mlflow/tracking
+      --default-artifact-root /mlflow/artifacts
+
+volumes:
+  redis_data:
+  prometheus_data:
+  grafana_data:
+  mlflow_data:

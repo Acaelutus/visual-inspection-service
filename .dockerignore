@@ -1,0 +1,39 @@
+# .dockerignore — что НЕ копировать в Docker образ.
+# Работает как .gitignore, но для docker build.
+# Меньше контекст = быстрее сборка + меньше образ.
+
+# Python артефакты
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Виртуальное окружение — в образе используем system python
+venv/
+env/
+
+# Данные и модели — монтируются через volume, не бакаются в образ
+data/
+ml/runs/
+ml/models/
+
+# Git история не нужна в образе
+.git/
+.gitignore
+
+# Docker файлы (не нужны внутри контейнера)
+docker/
+Dockerfile
+.dockerignore
+docker-compose*.yml
+
+# CI/CD и AWS конфиги
+.github/
+aws/
+
+# Тесты — не нужны в production образе
+tests/
+
+# Документация
+*.md
