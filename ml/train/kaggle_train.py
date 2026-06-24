@@ -49,22 +49,23 @@ val_images = list((dataset_root / "images" / "val").glob("*.png"))
 print(f"  Train: {len(train_images)} изображений")
 print(f"  Val:   {len(val_images)} изображений")
 
-# ─── ПАТЧИМ dataset.yaml ──────────────────────────────────────────────────────
-# Оригинальный yaml содержит Windows путь D:\...
-# Заменяем на актуальный Kaggle путь (/kaggle/input/...)
-yaml_src = dataset_root / "dataset.yaml"
+# ─── СОЗДАЁМ ЧИСТЫЙ dataset.yaml ─────────────────────────────────────────────
+# Оригинальный yaml записан с Windows-кодировкой (cp1251) — на Linux он нечитаем.
+# Вместо парсинга битого файла создаём новый yaml напрямую — мы знаем его структуру.
 yaml_dst = WORK_DIR / "dataset.yaml"
 
-with open(yaml_src) as f:
-    config = yaml.safe_load(f)
+config = {
+    "path": str(dataset_root),   # абсолютный путь до корня датасета на Kaggle
+    "train": "images/train",     # относительно path
+    "val": "images/val",         # относительно path
+    "nc": 1,                     # один класс — дефект есть/нет
+    "names": {0: "defect"},
+}
 
-# path: корневая папка датасета — от неё строятся train: images/train и val: images/val
-config["path"] = str(dataset_root)
-
-with open(yaml_dst, "w") as f:
+with open(yaml_dst, "w", encoding="utf-8") as f:
     yaml.dump(config, f, allow_unicode=True)
 
-print(f"\n✓ dataset.yaml пропатчен: {yaml_dst}")
+print(f"\n✓ dataset.yaml создан: {yaml_dst}")
 print(f"  path: {config['path']}")
 print(f"  nc:   {config['nc']}")
 print(f"  names: {config['names']}")

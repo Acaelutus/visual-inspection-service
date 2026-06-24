@@ -175,7 +175,7 @@ nc: 1
 names:
   0: {CLASS_NAME}
 """
-    (output / "dataset.yaml").write_text(yaml_content)
+    (output / "dataset.yaml").write_text(yaml_content, encoding="utf-8")
 
     # Итоговая статистика
     train_count = len(list((output / "images" / "train").glob("*.png")))
