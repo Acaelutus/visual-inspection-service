@@ -3,7 +3,7 @@ uvicorn[standard]==0.39.0
 python-multipart==0.0.20
 pydantic==2.13.4
 ultralytics==8.4.75
-opencv-python-headless==4.8.1.78
+opencv-python==4.8.1.78
 numpy==1.26.4
 celery==5.3.6
 redis==5.0.1

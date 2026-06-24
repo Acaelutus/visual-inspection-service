@@ -20,9 +20,10 @@ RUN pip install --no-cache-dir --user -r requirements.txt
 # ---- Stage 2: Production — минимальный рабочий образ ----
 FROM python:3.9-slim
 
-# libglib2.0-0 нужен opencv-python-headless на Linux.
-# headless-версия не требует libGL (нет GUI) — меньше зависимостей, меньше образ.
+# libgl1-mesa-glx нужен opencv-python (полная версия) на Linux.
+# ultralytics обращается к cv2.imshow при импорте — нужна полная, не headless версия.
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1-mesa-glx \
     libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
