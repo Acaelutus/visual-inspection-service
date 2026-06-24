@@ -19,5 +19,4 @@ def register_deployed_model() -> None:
             mlflow.set_tag("stage", "production")
 
     except Exception:
-        # MLflow is optional — service must start even if tracking is unavailable
         pass

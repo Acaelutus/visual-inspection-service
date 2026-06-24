@@ -1,20 +1,11 @@
-"""
-Конвертация полного датасета MVTec AD (все 15 категорий) в YOLO формат.
-Используем бинарный подход: один класс 'defect'.
-Это стандартный подход для production inspection систем.
-"""
-
 import cv2
 import shutil
 import numpy as np
 from pathlib import Path
 
-
-# Один класс — дефект есть или нет
 CLASS_ID = 0
 CLASS_NAME = "defect"
 
-# Все 15 категорий MVTec AD
 CATEGORIES = [
     "bottle", "cable", "capsule", "carpet", "grid",
     "hazelnut", "leather", "metal_nut", "pill", "screw",
@@ -23,21 +14,12 @@ CATEGORIES = [
 
 
 def mask_to_bboxes(mask_path: Path, image_size: tuple) -> list[str]:
-    """
-    Конвертирует маску дефекта в список bbox в YOLO формате.
-    Одна маска может содержать несколько отдельных дефектов —
-    findContours найдёт каждый отдельно.
-    """
     mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE)
     if mask is None:
         return []
 
     _, binary = cv2.threshold(mask, 128, 255, cv2.THRESH_BINARY)
-    contours, _ = cv2.findContours(
-        binary,
-        cv2.RETR_EXTERNAL,
-        cv2.CHAIN_APPROX_SIMPLE
-    )
+    contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     if not contours:
         return []
@@ -46,50 +28,27 @@ def mask_to_bboxes(mask_path: Path, image_size: tuple) -> list[str]:
     yolo_lines = []
 
     for contour in contours:
-        area = cv2.contourArea(contour)
-
-        # Пропускаем слишком маленькие области — это шум
-        # 100 пикселей минимум
-        if area < 100:
+        if cv2.contourArea(contour) < 100:
             continue
 
         x, y, w, h = cv2.boundingRect(contour)
-
         cx = (x + w / 2) / img_w
         cy = (y + h / 2) / img_h
-        nw = w / img_w
-        nh = h / img_h
-
-        yolo_lines.append(
-            f"{CLASS_ID} {cx:.6f} {cy:.6f} {nw:.6f} {nh:.6f}"
-        )
+        yolo_lines.append(f"{CLASS_ID} {cx:.6f} {cy:.6f} {w/img_w:.6f} {h/img_h:.6f}")
 
     return yolo_lines
 
 
-def process_category(
-    category_path: Path,
-    output_path: Path,
-    val_ratio: float = 0.2
-) -> dict:
-    """
-    Обрабатывает одну категорию MVTec.
-    Возвращает статистику: сколько обработано, пропущено.
-    """
+def process_category(category_path: Path, output_path: Path, val_ratio: float = 0.2) -> dict:
     stats = {"processed": 0, "skipped": 0, "category": category_path.name}
 
     test_dir = category_path / "test"
     gt_dir = category_path / "ground_truth"
 
     if not test_dir.exists():
-        print(f"  ✗ test/ не найдена в {category_path}")
         return stats
 
-    # Собираем все дефектные папки (пропускаем 'good')
-    defect_dirs = [
-        d for d in test_dir.iterdir()
-        if d.is_dir() and d.name != "good"
-    ]
+    defect_dirs = [d for d in test_dir.iterdir() if d.is_dir() and d.name != "good"]
 
     all_images = []
     for defect_dir in defect_dirs:
@@ -98,8 +57,6 @@ def process_category(
             if mask_path.exists():
                 all_images.append((img_path, mask_path))
 
-    # Разбиваем на train/val
-    # val_ratio=0.2 означает каждый 5-й файл идёт в val
     for idx, (img_path, mask_path) in enumerate(all_images):
         img = cv2.imread(str(img_path))
         if img is None:
@@ -114,19 +71,10 @@ def process_category(
             continue
 
         split = "val" if idx % int(1 / val_ratio) == 0 else "train"
+        unique_name = f"{category_path.name}_{img_path.parent.name}_{img_path.stem}"
 
-        # Уникальное имя файла: категория_дефект_номер
-        unique_name = (
-            f"{category_path.name}"
-            f"_{img_path.parent.name}"
-            f"_{img_path.stem}"
-        )
-
-        dest_img = output_path / "images" / split / f"{unique_name}.png"
-        dest_label = output_path / "labels" / split / f"{unique_name}.txt"
-
-        shutil.copy2(img_path, dest_img)
-        dest_label.write_text("\n".join(yolo_lines))
+        shutil.copy2(img_path, output_path / "images" / split / f"{unique_name}.png")
+        (output_path / "labels" / split / f"{unique_name}.txt").write_text("\n".join(yolo_lines))
 
         stats["processed"] += 1
 
@@ -134,13 +82,9 @@ def process_category(
 
 
 def prepare_full_dataset(mvtec_path: str, output_path: str):
-    """
-    Конвертирует все 15 категорий MVTec в единый YOLO датасет.
-    """
     mvtec = Path(mvtec_path)
     output = Path(output_path)
 
-    # Создаём структуру папок
     for split in ["train", "val"]:
         (output / "images" / split).mkdir(parents=True, exist_ok=True)
         (output / "labels" / split).mkdir(parents=True, exist_ok=True)
@@ -150,44 +94,26 @@ def prepare_full_dataset(mvtec_path: str, output_path: str):
 
     for category_name in CATEGORIES:
         category_path = mvtec / category_name
-
         if not category_path.exists():
-            print(f"✗ Категория не найдена: {category_name}")
+            print(f"✗ Not found: {category_name}")
             continue
 
-        print(f"\nОбрабатываем: {category_name}...")
+        print(f"Processing: {category_name}...")
         stats = process_category(category_path, output)
-
-        print(f"  ✓ обработано: {stats['processed']}, пропущено: {stats['skipped']}")
+        print(f"  ✓ {stats['processed']} processed, {stats['skipped']} skipped")
         total_processed += stats["processed"]
         total_skipped += stats["skipped"]
 
-    # Сохраняем dataset.yaml
-    yaml_content = f"""# MVTec AD — полный датасет, все 15 категорий
-# Бинарная детекция: defect / no defect
-
-path: {output}
-
-train: images/train
-val: images/val
-
-nc: 1
-names:
-  0: {CLASS_NAME}
-"""
+    yaml_content = f"path: {output}\ntrain: images/train\nval: images/val\nnc: 1\nnames:\n  0: {CLASS_NAME}\n"
     (output / "dataset.yaml").write_text(yaml_content, encoding="utf-8")
 
-    # Итоговая статистика
     train_count = len(list((output / "images" / "train").glob("*.png")))
     val_count = len(list((output / "images" / "val").glob("*.png")))
 
     print(f"\n{'='*50}")
-    print(f"✓ Готово!")
-    print(f"  Всего обработано: {total_processed}")
-    print(f"  Пропущено:        {total_skipped}")
-    print(f"  Train:            {train_count} изображений")
-    print(f"  Val:              {val_count} изображений")
-    print(f"  Датасет:          {output}")
+    print(f"✓ Done! {total_processed} processed, {total_skipped} skipped")
+    print(f"  Train: {train_count} | Val: {val_count}")
+    print(f"  Output: {output}")
     print(f"{'='*50}")
 
 

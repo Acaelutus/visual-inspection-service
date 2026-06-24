@@ -15,7 +15,6 @@ def on_worker_ready(**kwargs):
 
 @celery_app.task(name="tasks.detect_defects", bind=True)
 def detect_defects(self, image_b64: str, confidence: float = 0.25) -> dict:
-    # image is base64-encoded because Celery serializes to JSON which can't handle raw bytes
     try:
         raw = base64.b64decode(image_b64)
         image = cv2.imdecode(np.frombuffer(raw, dtype=np.uint8), cv2.IMREAD_COLOR)

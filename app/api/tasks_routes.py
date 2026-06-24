@@ -33,7 +33,6 @@ def get_task_result(task_id: str):
 
     if result.state == "SUCCESS":
         data = result.result
-        # forget() prevents double-counting metrics on repeated polls
         result.forget()
         PREDICTIONS_TOTAL.labels(endpoint="async").inc()
         INFERENCE_DURATION_MS.observe(data["inference_ms"])
