@@ -47,9 +47,10 @@ jobs:
           python-version: "3.9"
           cache: pip
 
-      - name: Install dependencies
-        # Ставим prod зависимости + dev зависимости (pytest)
-        run: pip install -r requirements.txt -r requirements-dev.txt
+      - name: Install test dependencies
+        # requirements-test.txt — лёгкие зависимости без ultralytics/mlflow (PyTorch ~600MB).
+        # ultralytics и mlflow мокаются в tests/conftest.py через sys.modules.
+        run: pip install -r requirements-test.txt -r requirements-dev.txt
 
       - name: Run tests
         run: pytest tests/ -v --tb=short
