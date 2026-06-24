@@ -1,0 +1,11 @@
+# MVTec AD Ч полный датасет, все 15 категорий
+# Ѕинарна€ детекци€: defect / no defect
+
+path: D:\visual-inspection-service\data\mvtec_yolo
+
+train: images/train
+val: images/val
+
+nc: 1
+names:
+  0: defect

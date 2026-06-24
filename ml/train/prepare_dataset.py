@@ -1,57 +1,42 @@
 """
-Конвертация MVTec AD масок в YOLO формат.
-
-MVTec даёт нам маски (чёрно-белые PNG где белое = дефект).
-YOLO ожидает txt файлы с координатами: класс cx cy width height
-Этот скрипт конвертирует одно в другое.
+Конвертация полного датасета MVTec AD (все 15 категорий) в YOLO формат.
+Используем бинарный подход: один класс 'defect'.
+Это стандартный подход для production inspection систем.
 """
 
 import cv2
+import shutil
 import numpy as np
 from pathlib import Path
 
 
-# Классы дефектов — каждому присваиваем номер
-# YOLO не понимает названия, только цифры
-DEFECT_CLASSES = {
-    "broken_large": 0,
-    "broken_small": 1,
-    "contamination": 2,
-}
+# Один класс — дефект есть или нет
+CLASS_ID = 0
+CLASS_NAME = "defect"
+
+# Все 15 категорий MVTec AD
+CATEGORIES = [
+    "bottle", "cable", "capsule", "carpet", "grid",
+    "hazelnut", "leather", "metal_nut", "pill", "screw",
+    "tile", "toothbrush", "transistor", "wood", "zipper"
+]
 
 
-def mask_to_bbox_yolo(mask_path: Path, image_size: tuple) -> list[str]:
+def mask_to_bboxes(mask_path: Path, image_size: tuple) -> list[str]:
     """
-    Читает маску дефекта и возвращает bbox в YOLO формате.
-
-    YOLO формат: класс cx cy width height
-    Все значения от 0 до 1 (доли от размера картинки).
-
-    Args:
-        mask_path: путь до маски PNG
-        image_size: (width, height) оригинального изображения
-
-    Returns:
-        список строк в YOLO формате
+    Конвертирует маску дефекта в список bbox в YOLO формате.
+    Одна маска может содержать несколько отдельных дефектов —
+    findContours найдёт каждый отдельно.
     """
-    # Читаем маску как чёрно-белое изображение
-    # cv2.IMREAD_GRAYSCALE — загружает как серый, не цветной
     mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE)
-
     if mask is None:
-        print(f"Не могу прочитать маску: {mask_path}")
         return []
 
-    # Бинаризация — делаем пиксели либо 0 либо 255
-    # Всё что > 128 становится 255 (белое = дефект)
     _, binary = cv2.threshold(mask, 128, 255, cv2.THRESH_BINARY)
-
-    # Находим контуры белых областей
-    # contours — это список координат границ каждого белого пятна
     contours, _ = cv2.findContours(
         binary,
-        cv2.RETR_EXTERNAL,      # только внешние контуры
-        cv2.CHAIN_APPROX_SIMPLE # сжатый формат
+        cv2.RETR_EXTERNAL,
+        cv2.CHAIN_APPROX_SIMPLE
     )
 
     if not contours:
@@ -60,106 +45,154 @@ def mask_to_bbox_yolo(mask_path: Path, image_size: tuple) -> list[str]:
     img_w, img_h = image_size
     yolo_lines = []
 
-    # Определяем класс из имени папки маски
-    # mask_path.parent.name = "broken_large" например
-    defect_type = mask_path.parent.name
-    class_id = DEFECT_CLASSES.get(defect_type, 0)
-
     for contour in contours:
-        # boundingRect даёт нам прямоугольник вокруг контура
-        # x, y — левый верхний угол, w, h — ширина и высота
+        area = cv2.contourArea(contour)
+
+        # Пропускаем слишком маленькие области — это шум
+        # 100 пикселей минимум
+        if area < 100:
+            continue
+
         x, y, w, h = cv2.boundingRect(contour)
 
-        # Конвертируем в YOLO формат (доли от размера картинки)
-        # YOLO хочет центр прямоугольника, не угол
         cx = (x + w / 2) / img_w
         cy = (y + h / 2) / img_h
         nw = w / img_w
         nh = h / img_h
 
-        yolo_lines.append(f"{class_id} {cx:.6f} {cy:.6f} {nw:.6f} {nh:.6f}")
+        yolo_lines.append(
+            f"{CLASS_ID} {cx:.6f} {cy:.6f} {nw:.6f} {nh:.6f}"
+        )
 
     return yolo_lines
 
 
-def prepare_dataset(mvtec_path: str, output_path: str):
+def process_category(
+    category_path: Path,
+    output_path: Path,
+    val_ratio: float = 0.2
+) -> dict:
     """
-    Основная функция — конвертирует весь датасет.
+    Обрабатывает одну категорию MVTec.
+    Возвращает статистику: сколько обработано, пропущено.
+    """
+    stats = {"processed": 0, "skipped": 0, "category": category_path.name}
 
-    Args:
-        mvtec_path: путь до папки bottle из MVTec
-        output_path: куда сохранить готовый датасет для YOLO
+    test_dir = category_path / "test"
+    gt_dir = category_path / "ground_truth"
+
+    if not test_dir.exists():
+        print(f"  ✗ test/ не найдена в {category_path}")
+        return stats
+
+    # Собираем все дефектные папки (пропускаем 'good')
+    defect_dirs = [
+        d for d in test_dir.iterdir()
+        if d.is_dir() and d.name != "good"
+    ]
+
+    all_images = []
+    for defect_dir in defect_dirs:
+        for img_path in sorted(defect_dir.glob("*.png")):
+            mask_path = gt_dir / defect_dir.name / f"{img_path.stem}_mask.png"
+            if mask_path.exists():
+                all_images.append((img_path, mask_path))
+
+    # Разбиваем на train/val
+    # val_ratio=0.2 означает каждый 5-й файл идёт в val
+    for idx, (img_path, mask_path) in enumerate(all_images):
+        img = cv2.imread(str(img_path))
+        if img is None:
+            stats["skipped"] += 1
+            continue
+
+        h, w = img.shape[:2]
+        yolo_lines = mask_to_bboxes(mask_path, (w, h))
+
+        if not yolo_lines:
+            stats["skipped"] += 1
+            continue
+
+        split = "val" if idx % int(1 / val_ratio) == 0 else "train"
+
+        # Уникальное имя файла: категория_дефект_номер
+        unique_name = (
+            f"{category_path.name}"
+            f"_{img_path.parent.name}"
+            f"_{img_path.stem}"
+        )
+
+        dest_img = output_path / "images" / split / f"{unique_name}.png"
+        dest_label = output_path / "labels" / split / f"{unique_name}.txt"
+
+        shutil.copy2(img_path, dest_img)
+        dest_label.write_text("\n".join(yolo_lines))
+
+        stats["processed"] += 1
+
+    return stats
+
+
+def prepare_full_dataset(mvtec_path: str, output_path: str):
+    """
+    Конвертирует все 15 категорий MVTec в единый YOLO датасет.
     """
     mvtec = Path(mvtec_path)
     output = Path(output_path)
 
-    # Создаём структуру папок для YOLO
+    # Создаём структуру папок
     for split in ["train", "val"]:
         (output / "images" / split).mkdir(parents=True, exist_ok=True)
         (output / "labels" / split).mkdir(parents=True, exist_ok=True)
 
-    processed = 0
-    skipped = 0
+    total_processed = 0
+    total_skipped = 0
 
-    # Проходим по каждому типу дефекта
-    for defect_type in DEFECT_CLASSES:
-        test_dir = mvtec / "test" / defect_type
-        mask_dir = mvtec / "ground_truth" / defect_type
+    for category_name in CATEGORIES:
+        category_path = mvtec / category_name
 
-        if not test_dir.exists():
-            print(f"Папка не найдена: {test_dir}")
+        if not category_path.exists():
+            print(f"✗ Категория не найдена: {category_name}")
             continue
 
-        images = sorted(test_dir.glob("*.png"))
-        print(f"\n{defect_type}: найдено {len(images)} изображений")
+        print(f"\nОбрабатываем: {category_name}...")
+        stats = process_category(category_path, output)
 
-        for img_path in images:
-            # Находим соответствующую маску
-            # 000.png → 000_mask.png
-            mask_path = mask_dir / f"{img_path.stem}_mask.png"
+        print(f"  ✓ обработано: {stats['processed']}, пропущено: {stats['skipped']}")
+        total_processed += stats["processed"]
+        total_skipped += stats["skipped"]
 
-            if not mask_path.exists():
-                print(f"  Маска не найдена: {mask_path}")
-                skipped += 1
-                continue
+    # Сохраняем dataset.yaml
+    yaml_content = f"""# MVTec AD — полный датасет, все 15 категорий
+# Бинарная детекция: defect / no defect
 
-            # Читаем размер изображения
-            img = cv2.imread(str(img_path))
-            if img is None:
-                skipped += 1
-                continue
+path: {output}
 
-            h, w = img.shape[:2]  # shape возвращает (height, width, channels)
+train: images/train
+val: images/val
 
-            # Конвертируем маску в YOLO bbox
-            yolo_lines = mask_to_bbox_yolo(mask_path, (w, h))
+nc: 1
+names:
+  0: {CLASS_NAME}
+"""
+    (output / "dataset.yaml").write_text(yaml_content)
 
-            if not yolo_lines:
-                skipped += 1
-                continue
+    # Итоговая статистика
+    train_count = len(list((output / "images" / "train").glob("*.png")))
+    val_count = len(list((output / "images" / "val").glob("*.png")))
 
-            # 80% train, 20% val — стандартное разделение
-            # используем индекс файла для разделения
-            idx = int(img_path.stem)
-            split = "train" if idx % 5 != 0 else "val"
-
-            # Копируем изображение
-            import shutil
-            dest_img = output / "images" / split / img_path.name
-            shutil.copy2(img_path, dest_img)
-
-            # Сохраняем лейбл
-            dest_label = output / "labels" / split / f"{img_path.stem}.txt"
-            dest_label.write_text("\n".join(yolo_lines))
-
-            processed += 1
-
-    print(f"\n✓ Готово: {processed} изображений обработано, {skipped} пропущено")
-    print(f"✓ Датасет сохранён в: {output}")
+    print(f"\n{'='*50}")
+    print(f"✓ Готово!")
+    print(f"  Всего обработано: {total_processed}")
+    print(f"  Пропущено:        {total_skipped}")
+    print(f"  Train:            {train_count} изображений")
+    print(f"  Val:              {val_count} изображений")
+    print(f"  Датасет:          {output}")
+    print(f"{'='*50}")
 
 
 if __name__ == "__main__":
-    prepare_dataset(
-        mvtec_path=r"C:\Users\abduv\Downloads\bottle",
-        output_path=r"D:\visual-inspection-service\data\bottle_yolo"
+    prepare_full_dataset(
+        mvtec_path=r"D:\mvtec_anomaly_detection",
+        output_path=r"D:\visual-inspection-service\data\mvtec_yolo"
     )

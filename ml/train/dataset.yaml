@@ -1,0 +1,16 @@
+# Конфигурация датасета для YOLOv8
+# YOLO читает этот файл чтобы знать где данные и сколько классов
+
+path: D:\visual-inspection-service\data\bottle_yolo
+
+train: images/train
+val: images/val
+
+# Количество классов
+nc: 3
+
+# Названия классов — порядок важен, совпадает с номерами в txt файлах
+names:
+  0: broken_large
+  1: broken_small
+  2: contamination
