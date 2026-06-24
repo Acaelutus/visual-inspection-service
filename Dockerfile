@@ -20,10 +20,9 @@ RUN pip install --no-cache-dir --user -r requirements.txt
 # ---- Stage 2: Production — минимальный рабочий образ ----
 FROM python:3.9-slim
 
-# Системные библиотеки для OpenCV (без них cv2 не импортируется на Linux)
-# --no-install-recommends: минимальный набор, без рекомендованных пакетов
+# libglib2.0-0 нужен opencv-python-headless на Linux.
+# headless-версия не требует libGL (нет GUI) — меньше зависимостей, меньше образ.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgl1-mesa-glx \
     libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
