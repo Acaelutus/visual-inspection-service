@@ -9,17 +9,14 @@ import numpy as np
 from pathlib import Path
 
 
-# Цвета для каждого класса (BGR формат — в OpenCV порядок Blue Green Red)
+# Один класс — бинарная детекция (defect / no defect)
+# BGR формат — в OpenCV порядок Blue Green Red
 COLORS = {
-    0: (0, 0, 255),    # broken_large  → красный
-    1: (0, 255, 0),    # broken_small  → зелёный
-    2: (255, 0, 0),    # contamination → синий
+    0: (0, 0, 255),    # defect → красный
 }
 
 CLASS_NAMES = {
-    0: "broken_large",
-    1: "broken_small",
-    2: "contamination",
+    0: "defect",
 }
 
 
@@ -117,6 +114,6 @@ def visualize_samples(dataset_path: str, num_samples: int = 6):
 
 if __name__ == "__main__":
     visualize_samples(
-        dataset_path=r"D:\visual-inspection-service\data\bottle_yolo",
+        dataset_path=r"D:\visual-inspection-service\data\mvtec_yolo",
         num_samples=6
     )
